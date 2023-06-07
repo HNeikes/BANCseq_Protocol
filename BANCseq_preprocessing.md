@@ -1,5 +1,5 @@
 # 1. Pre-processing
-QCs, alignment, peak-calling was performed with seq2science tool; https://vanheeringen-lab.github.io/seq2science/index.html) in order to use spike-in normalisation, it is necessary to align not only to the target genome (human/mouse), but also to the spike-in genome (drosophila / S. cerevisae) an example workflow can look like this:
+QCs, alignment, peak-calling was performed with [seq2science](https://vanheeringen-lab.github.io/seq2science/index.html) in order to use spike-in normalisation, it is necessary to align not only to the target genome (human/mouse), but also to the spike-in genome (drosophila / S. cerevisae) an example workflow can look like this:
 ```bash
 mkdir BANCseq_NatureProtocols
 cd BANCseq_NatureProtocols
@@ -47,7 +47,7 @@ For that, we first scale the peaks of the sample with the highest tested TF conc
 Rscript BANCseq_MedianPeakLength.R results_mouse/macs2/mm10-HN0059_1_1000nM_YY1_mESC_peaks.narrowPeak mm10-HN0059_1_1000nM_YY1_mESC_peaks.saf
 ```
 ## 3b. Read quantification
-This can be done with, for example, featureCounts from the Subread package (https://subread.sourceforge.net/); be sure to have it installed as well. Any other tool to calculate coverage over a set of peaks is of course suitable as well, e.g. bedtools multicov
+This can be done with, for example, featureCounts from the [Subread package](https://subread.sourceforge.net/); be sure to have it installed as well. Any other tool to calculate coverage over a set of peaks is of course suitable as well, e.g. bedtools multicov
 ```bash
 conda activate featureCounts
 featureCounts -p -C -O -g GeneID -s 0 -F SAF -B \
