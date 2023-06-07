@@ -46,7 +46,7 @@ conda deactivate
 ## 3. Read quantification per sample and binding site
 Next, for K<sub>d</sub><sup>App</sup> determination in R, we need the raw read count at every peak for every sample.
 ### 3a. Scale peaks
-For that, we first scale the peaks of the sample with the highest tested TF concentration to the median peak length in that sample (you can do that with the **BANCseq_MedianPeakLength.R* script provided in this GitHub repo, and store the results in a SAF format, which you will need for the next step).
+For that, we first scale the peaks of the sample with the highest tested TF concentration to the median peak length in that sample (you can do that with the [BANCseq_MedianPeakLength.R](https://github.com/HNeikes/BANCseq_Protocol/blob/main/Supplementary%20Scripts/BANCseq_MedianPeakLength.R) script provided in this GitHub repo, and store the results in a SAF format, which you will need for the next step).
 ```bash
 Rscript BANCseq_MedianPeakLength.R results_mouse/macs2/mm10-HN0059_1_1000nM_YY1_mESC_peaks.narrowPeak mm10-HN0059_1_1000nM_YY1_mESC_peaks.saf
 ```
