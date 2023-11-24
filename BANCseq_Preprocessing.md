@@ -3,7 +3,9 @@ Here we describe the initial pre-processing steps from raw sequencing reads to q
 The steps are described for the same samples for which data is visualizes in the **Nature Protocols paper instertLinkhere)**, a BANC-seq experiment with FLAG-YY1 in mouse embryonic stem cells (mESC) with 9 titration points between 0 and 1000 nM FLAG-YY1.
 
 ## 1. Pre-processing
-QCs, alignment, peak-calling was performed with [seq2science](https://vanheeringen-lab.github.io/seq2science/index.html) in order to use spike-in normalisation, it is necessary to align not only to the target genome (human/mouse), but also to the spike-in genome (drosophila / S. cerevisae) an example workflow can look like this:
+QCs, alignment, peak-calling was performed with [seq2science](https://vanheeringen-lab.github.io/seq2science/index.html), which requires conda. To install conda and seq2science, the [installation guide](https://vanheeringen-lab.github.io/seq2science/content/gettingstarted.html#installation) of seq2science gives sufficient instructions.
+
+In order to use spike-in normalisation, it is necessary to align not only to the target genome (human/mouse), but also to the spike-in genome (drosophila / S. cerevisae) an example workflow can look like this:
 ```bash
 mkdir BANCseq_NatureProtocols
 cd BANCseq_NatureProtocols
