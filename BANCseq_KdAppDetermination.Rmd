@@ -1,0 +1,134 @@
+---
+title: "BANCseq KdApp Determination"
+author: "Hannah Neikes"
+date: "2023-06-07"
+output:
+  pdf_document: default
+  word_document: default
+---
+## This script is an example on how to determine absolute apparent binding affinities (K~d~^Apps^) in native chromatin by sequencing (BANC-seq).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.height = 10,fig.width = 10, warning = FALSE, message = F)
+options(tinytex.verbose = TRUE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 50), tidy = TRUE)
+```
+
+```{r label="Load packages"}
+library(foreach, quietly = T)
+library(doParallel, quietly = T)
+library(ComplexHeatmap, quietly = T)
+library(circlize, quietly = T)
+library(RColorBrewer, quietly = T)
+library(ggplot2, quietly = T)
+```
+## 1. Load the data 
+### Load a count table of raw counts for each sample at each peak location, as well as information on spike-in reads in each sample.
+
+```{r label="Load data"}
+mm10 <- read.csv('E:/PhD/00_papers/10_BANCseq_Protocol/mm10-HN0059_1_1000nM_YY1_mESC_peaks.counts', stringsAsFactors = F, header = T, sep = '\t', skip = 1)
+colnames(mm10)[7:ncol(mm10)] <- gsub('results_mouse.final_bam.mm10.HN0059_[1-9]{1}_([0-9]{4})nM_YY1_mESC.samtools.coordinate.bam','\\1_nM_YY1',colnames(mm10)[7:ncol(mm10)])
+# make sure the column names in this df match with samples names in the spikeIn txt 
+spikeIn <- read.csv('readCounts.txt', stringsAsFactors = F, header = T, sep = '\t')
+spikeIn$spikeIn_yeast <- 1000000/spikeIn$spikeInReads
+spikeIn$sample <- gsub('HN0059_[1-9]{1}_([0-9]{4})nM_YY1_mESC', '\\1_nM_YY1', spikeIn$sample)
+print(paste("Number of sites before KdApp determination:", nrow(mm10)))
+print(paste("Number of tested concentrations:", nrow(spikeIn)))
+head(mm10)
+```
+## 2. Normalisation
+### The following code normalizes reads in each sample to the spike-in DNA, and subsequently calculates the relative binding per tested concentration and site.
+
+```{r label="Scale data"}
+mm10_kd <- mm10
+for (s in spikeIn$sample) {
+  mm10_kd[,s] <- mm10[,s]*spikeIn$spikeIn_yeast[spikeIn$sample == s]
+}
+# fold change of highest concentration over 0 nM sample
+mm10_kd$fcOverControl <- log2((mm10_kd$`1000_nM_YY1`+2*sd(mm10_kd$`0000_nM_YY1`))/(mm10_kd$`0000_nM_YY1`+2*sd(mm10_kd$`0000_nM_YY1`)))
+mm10_kd[,grep("nM",colnames(mm10_kd))] <- (mm10_kd[,grep("nM",colnames(mm10_kd))]+1)/(mm10_kd$`0000_nM_YY1`+1)
+# relative signal at each binding site for each concentration
+mm10_kd[,grep("nM",colnames(mm10_kd))] <- mm10_kd[,grep("nM",colnames(mm10_kd))]/apply(mm10_kd[,grep("nM",colnames(mm10_kd))],1,max)
+head(mm10_kd)
+```
+## 3. K~d~^App^ Determination
+### This is the actual K~d~^App^ determination, based on (log10-transformed) concentrations (xValues) and relative binding per peak (yValues).
+
+```{r label="K~d~^App^ determination"}
+mm10_kd$kd <- NA
+mm10_kd$p <- NA
+mm10_kd$r <- NA
+mm10_kd$n <- NA
+xValues <- c(log10(as.numeric(gsub("([0-9]{4})_nM_YY1","\\1",colnames(mm10_kd[,grep("*nM",colnames(mm10_kd))])))))
+xValues <- xValues[xValues >=0]
+
+cl <- makeCluster(10)
+registerDoParallel(cl)
+ptm <- proc.time()
+mm10_kd <- foreach(i=1:nrow(mm10_kd),.combine = rbind,.errorhandling = "remove") %dopar% {
+  library(minpack.lm)
+  mm10_kdTemp <- mm10_kd[i,]
+  yValues <- c(as.numeric(mm10_kd[i,grep("*nM",colnames(mm10_kd[,colnames(mm10_kd) != '0000_nM_YY1']))])) # Don't use the 0nM value!
+  myModel <- nlsLM(yValues ~ 1/(((kd/xValues)^n)+1),start = list(kd = 1,n = 1),control = nls.lm.control(maxiter = 50))
+  myCoefs <- coef(myModel)
+  myCor <- cor.test(yValues,predict(myModel))
+  mm10_kdTemp$kd <- 10^(myCoefs[[1]])
+  mm10_kdTemp$p <- myCor$p.value
+  mm10_kdTemp$r <- myCor$estimate[[1]]
+  mm10_kdTemp$n <- myCoefs[[2]]
+  mm10_kdTemp
+}
+stopCluster(cl)
+head(mm10_kd)
+```
+## 4. Select high confidence sites
+### Select sites with high confidence K~d~^App^ fit (based on r- and p-value), and remove outliers. For downstream analysis, we also safe the results.
+
+```{r label="Select high confidence sites"}
+mm10_kd$highConf <- F
+mm10_kd$highConf[mm10_kd$p < 0.01 & mm10_kd$r > 0.9] <- T
+mm10_kd$outlierMeanSd_n <- F
+mm10_kd$outlierMeanSd_kd <- F
+my_mean_n <- mean(mm10_kd$n[mm10_kd$highConf])
+my_sd_n <- sd(mm10_kd$n[mm10_kd$highConf])
+my_up_n <-  my_mean_n+(2*my_sd_n) # Upper Range
+my_low_n <- my_mean_n-(2*my_sd_n) # Lower Range
+mm10_kd$outlierMeanSd_n[(mm10_kd$n > my_up_n | mm10_kd$n < my_low_n )] <- T
+my_mean_kd <- mean(mm10_kd$kd[mm10_kd$highConf])
+my_sd_kd <- sd(mm10_kd$kd[mm10_kd$highConf])
+my_up_kd <-  my_mean_kd+(2*my_sd_kd) # Upper Range
+my_low_kd <- my_mean_kd-(2*my_sd_kd) # Lower Range
+mm10_kd$outlierMeanSd_kd[(mm10_kd$kd > my_up_kd | mm10_kd$kd < my_low_kd )] <- T
+mm10_kd$outlierMeanSd <- F
+mm10_kd$outlierMeanSd[mm10_kd$outlierMeanSd_n == T & mm10_kd$outlierMeanSd_kd != T] <- 'n'
+mm10_kd$outlierMeanSd[mm10_kd$outlierMeanSd_n != T & mm10_kd$outlierMeanSd_kd == T] <- 'kd'
+mm10_kd$outlierMeanSd[mm10_kd$outlierMeanSd_n == T & mm10_kd$outlierMeanSd_kd == T] <- 'n_kd'
+rm(my_low_kd, my_up_kd, my_sd_kd, my_mean_kd, my_mean_n, my_low_n, my_up_n, my_sd_n)
+
+mm10_kd_highConf <- mm10_kd[mm10_kd$highConf == T & mm10_kd$outlierMeanSd != 'n_kd',]
+write.table(mm10_kd_highConf, file = 'highConfPeaks_noOutliers.txt', quote = F, col.names = T, row.names = F, sep = '\t')
+print(paste("Number of high confidence sites:", nrow(mm10_kd_highConf)))
+head(mm10_kd_highConf)
+```
+## 5. Plot the data 
+### To have a quick glance at the K~d~^Apps^ and relative enrichment, we can plot this histogram of K~d~^Apps^, as well as a Heatmap of the relative enrichment for each site and concentration, alongside the K~d~^App^. The data frame consists of the peak information, relative signal at each site and concentration, as well as K~d~^Apps^ and p- and r-values for the Hill curve fit.
+
+```{r label="Plot data"}
+hist(mm10_kd_highConf$kd, breaks = 50)
+
+mm10_kd_highConf <- mm10_kd_highConf[order(- mm10_kd_highConf$kd),] # sort the sites by KdApp for visualisation
+Heatmap(mm10_kd_highConf[,15:7],
+                     cluster_rows = F, cluster_columns = F,
+                     name = 'Relative signal\nat peak',
+                     width = unit(5, 'cm'),
+                     top_annotation = HeatmapAnnotation(
+                       'Flag-YY1 (nM)' = anno_barplot(as.numeric(gsub("([0-9]{4})_nM_YY1","\\1",
+                                                                      colnames(mm10_kd_highConf[,15:7]))),
+                                                      bar_width = 0.75, border = F,
+                                                      axis_param = list(side = "left",at = c(0, 500, 1000),
+                                                                        labels = c(0, 500, 1000))),
+                       height = unit(1.5, 'cm')),
+                     col = colorRamp2(breaks = c(0, 0.25, 0.5, 0.75, 1), colors = brewer.pal(5, 'YlGnBu')))+
+  Heatmap(mm10_kd_highConf[, 'kd'], name = 'KdApp', width = unit(0.5, 'cm'),
+          col = colorRamp2(breaks = c(seq(min(mm10_kd_highConf$kd),max(mm10_kd_highConf$kd),length.out = 5)), brewer.pal(5, 'Spectral')))
+```
